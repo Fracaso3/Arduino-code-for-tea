@@ -1,0 +1,1095 @@
+#include "Libraries.h"
+
+// Function to read temperature sensors
+void Read_OneWire_Temp() {
+  PT_Read_Temp.requestTemperatures();
+  ST_Read_Temp.requestTemperatures();
+ // ADD_Read_Temp1.requestTemperatures();
+  //ADD_Read_Temp2.requestTemperatures();
+  MACHINE_Read_Temp.requestTemperatures();
+
+  PT_TEMP = PT_Read_Temp.getTempCByIndex(0);
+  ST_TEMP = ST_Read_Temp.getTempCByIndex(0);
+ // ADD_TEMP1 = ADD_Read_Temp1.getTempCByIndex(0);
+ // ADD_TEMP2 = ADD_Read_Temp2.getTempCByIndex(0);
+  MACHINE_TEMP = MACHINE_Read_Temp.getTempCByIndex(0);
+  
+  Serial.print(F("FRACASO MASTER VERSION 2.0"));
+  Serial.print(F("<Temperature>"));
+  Temperature_value_data(PT_TEMP_PIN_NO,PT_TEMP);
+  Temperature_value_data(ST_TEMP_PIN_NO,ST_TEMP);
+ // Temperature_value_data(ADDITIONAL_TEMP1_PIN_NO,ADD_TEMP1);
+ // Temperature_value_data(ADDITIONAL_TEMP2_PIN_NO,ADD_TEMP2);
+  Temperature_value_data(MACHINE_TEMP_PIN_NO,MACHINE_TEMP);
+  Serial.println();
+}
+
+//Reading the teamperature sensor value
+void Temperature_value_data(int sensor_pin, int sensor_data){
+  if(sensor_data != -127){
+    Serial.print("<");
+    Serial.print(sensor_pin);
+    Serial.print("><");
+    Serial.print(sensor_data);
+    Serial.print(">");
+  } 
+  else {
+    if(sensor_pin == 54){
+    PT_Read_Temp.begin();
+    }
+    else if(sensor_pin == 55){
+      ST_Read_Temp.begin();
+    }
+  /*  else if(sensor_pin == 56){
+      ADD_Read_Temp1.begin();
+    }
+    else if(sensor_pin == 57){
+      ADD_Read_Temp2.begin();
+    } */
+    else if(sensor_pin == 58){
+      MACHINE_Read_Temp.begin();
+    }
+    Serial.print("<");
+    Serial.print(sensor_pin);
+    Serial.print("><");
+    Serial.print(sensor_data);
+    Serial.print(">");
+  }
+}
+
+
+void read_float_level_switches() {
+  static uint8_t wait_time = 100;
+  if(wait_time >= 100){
+    Serial.print(F("FRACASO MASTER VERSION 2.0"));
+    Serial.print(F("<INPUT>"));
+    for (int i = 0; i < 6; i++) {
+      float_level[i] = digitalRead(pinNumber[i]);
+      Serial.print("<");
+      Serial.print(pinNumber[i]);
+      Serial.print(">");
+      Serial.print("<");
+      Serial.print(float_level[i]);
+      Serial.print(">");
+      wait_time = 0; 
+    }
+    Serial.print("\n");
+  }
+  else {
+    wait_time++;
+  } 
+}
+
+void Tea_preparation_process(){
+    switch(tea_process_state){
+    case TEA_CHAMBER_EMPTY: 
+        if(pinNumber[0] == WATER_BUBBLE_1_FLOAT_LEVEL_LOW && float_level[0] == LOW){
+            if(pinNumber[4] == STORAGE_CHAMBER_FLOAT_LOW && float_level[4] == HIGH && Process_Halt == 1){
+                if(pinNumber[2] == PREP_CHAMBER_FLOAT_LOW  && float_level[2] == HIGH){
+                    digitalWrite(FUNNEL_DIVERGENT_SV,STS_ON);
+                    Serial.println(F("TEA_PREPARATION_PROCESS : TURNING ON THE FUNNEL_DIVERGENT_SV"));
+                    tea_process_state = TEA_CHAMBER_TURN_ON_WATER_PUMP_SV;
+                    Serial.println(F("TEA_PREPARATION_PROCESS : MOVING TO TEA_CHAMBER_TURN_ON_WATER_PUMP_SV STATE"));
+                    Tea_preparation_Wait_Time = 0;
+                }
+                else {
+                    Serial.println(F("TEA_PREPARATION_PROCESS : THERE IS ALREADY WATER IN THE PREPARATION CHAMBER, MOVING TO TEA_CHAMBER_REMOVE_WATER_FROM_CHAMBER STATE"));
+                    digitalWrite(REMOVE_WASTE_WATER_DIV_SV,STS_ON);
+                    tea_process_state = TEA_CHAMBER_REMOVE_WATER_FROM_CHAMBER;
+                    Serial.println(F("TEA_PREPARATION_PROCESS : MOVING TO TEA_CHAMBER_REMOVE_WATER_FROM_CHAMBER STATE"));
+                    Tea_preparation_Wait_Time = 0;
+                }
+            }
+        }
+            break;  
+    case TEA_CHAMBER_REMOVE_WATER_FROM_CHAMBER: 
+        if(pinNumber[2] == PREP_CHAMBER_FLOAT_LOW  && float_level[2] == HIGH){
+            Serial.println(F("TEA_PREPARATION_PROCESS : THE FLOAT LEVEL SWITCH IN THE PREPARATION CHAMBER IS HIGH"));
+            tea_process_state = TEA_CHAMBER_REMOVE_OVERALL_WATER_FROM_CHAMBER;  
+            Serial.println(F("TEA_PREPARATION_PROCESS : MOVING TO TEA_CHAMBER_REMOVE_OVERALL_WATER_FROM_CHAMBER STATE"));
+            Tea_preparation_Wait_Time = 0;
+        }
+        else {
+            if(Tea_preparation_Wait_Time >= MAX_WAIT_TIME_FOR_WATER_TO_DRAIN_FROM_PREP_CHAMBER){
+                digitalWrite(REMOVE_WASTE_WATER_DIV_SV,STS_OFF);
+                Serial.println(F("TEA_PREPARATION_PROCESS : MAX TIME REACHED FOR DRAINING WATER FROM PREPARATION CHAMBER, TURNING OFF THE REMOVE_WASTE_WATER_DIV_SV"));
+                tea_process_state = TEA_CHAMBER_TEA_PREPARATION_PROCESS_FAILED;
+                Serial.println(F("TEA_PREPARATION_PROCESS : MOVING TO TEA_CHAMBER_TEA_PREPARATION_PROCESS_FAILED STATE"));
+                Tea_preparation_Wait_Time = 0;
+            }
+            else  {
+                Tea_preparation_Wait_Time++;
+            }
+        }
+        break;
+    case TEA_CHAMBER_REMOVE_OVERALL_WATER_FROM_CHAMBER: 
+        if(Tea_preparation_Wait_Time >= MAX_OVERALL_WAIT_TIME_FOR_WATER_TO_DRAIN_FROM_PREP_CHAMBER){
+            digitalWrite(REMOVE_WASTE_WATER_DIV_SV,STS_OFF);    
+            Serial.println(F("TEA_PREPARATION_PROCESS : OVERALL TIME REACHED FOR DRAINING WATER FROM PREPARATION CHAMBER, TURNING OFF THE REMOVE_WASTE_WATER_DIV_SV"));
+            tea_process_state = TEA_CHAMBER_EMPTY;
+            Serial.println(F("TEA_PREPARATION_PROCESS : MOVING TO TEA_CHAMBER_EMPTY STATE"));
+            Tea_preparation_Wait_Time = 0;
+        }
+        else  {
+            Tea_preparation_Wait_Time++;    
+        }
+        break;
+    case TEA_CHAMBER_TURN_ON_WATER_PUMP_SV:
+        if(Tea_preparation_Wait_Time >= MAX_WAIT_TIME_FOR_FUNNEL_DIVERGENT_SV_TO_OPEN){
+            digitalWrite(WATER_PUMP_1,STS_ON);
+            Serial.println(F("TEA_PREPARATION_PROCESS : TURNING ON THE WATER_PUMP_1"));
+            tea_process_state = TEA_CHAMBER_WATER_FILLING;
+            Serial.println(F("TEA_PREPARATION_PROCESS : MOVING TO TEA_CHAMBER_WATER_FILLING STATE"));
+            Tea_preparation_Wait_Time = 0;
+        }
+        else  {
+            Tea_preparation_Wait_Time++;
+        }
+        break;
+    case TEA_CHAMBER_WATER_FILLING:
+        if(Tea_preparation_Wait_Time >= MAX_WAIT_TIME_FOR_WATER_FILLING - MAX_TIME_FOR_TEA_POWDER_ADDING - MAX_TIME_FOR_REMAINING_WATER_TO_BE_FILLED){ 
+            digitalWrite(WATER_PUMP_1,STS_OFF);
+            Serial.println(F("TEA_PREPARATION_PROCESS : MAX TIME REACHED FOR FILLING WATER IN PREPARATION CHAMBER, TURNING OFF THE WATER_PUMP_1"));    
+            tea_process_state = TEA_CHAMBER_WAIT_TIME_FOR_LEAD_SCREW_TO_MOVE_DOWN;
+            Tea_preparation_Wait_Time = 0;
+        }
+        else {
+            Tea_preparation_Wait_Time++;
+        }
+        break;  
+    case TEA_CHAMBER_WAIT_TIME_FOR_LEAD_SCREW_TO_MOVE_DOWN:
+        if(Tea_preparation_Wait_Time >= WAIT_TIME_FOR_LEAD_SCREW_TO_MOVE_DOWN){
+            SCREW_POSITION_STATE = true;
+            Serial.println(F("TEA_PREPARATION_PROCESS : WAIT TIME OVER, MOVING THE LEAD SCREW TO BOTTOM TO TOP"));
+            tea_process_state = TEA_CHAMBER_POWDER_AND_WATER_ADDING;
+            Serial.println(F("TEA_PREPARATION_PROCESS : MOVING TO TEA_CHAMBER_POWDER_AND_WATER_ADDING STATE"));
+            Tea_preparation_Wait_Time = 0;
+        }
+        else {
+            Tea_preparation_Wait_Time++;
+        }
+        break;
+
+    case TEA_CHAMBER_POWDER_AND_WATER_ADDING:
+        if(screw_halt == 1 && SCREW_POSITION_STATE == true){
+            Serial.println(F("TEA_PREPARATION_PROCESS : MOVING THE LEAD SCREW FROM BOTTOM TO TOP"));
+            digitalWrite(CAN_1,STS_ON); 
+            digitalWrite(WATER_PUMP_1,STS_ON);
+            Serial.println(F("TEA_PREPARATION_PROCESS : TURNING ON THE POWDER AND WATER_PUMP_1 FOR ADDING WATER IN PREPARATION CHAMBER"));
+            tea_process_state = TEA_CHAMBER_DECOTION_PREPARATION;
+            Serial.println(F("TEA_PREPARATION_PROCESS : MOVING TO TEA_CHAMBER_DECOTION_PREPARATION STATE"));    
+            SCREW_POSITION_STATE = false; 
+            Tea_preparation_Wait_Time = 0;
+        }
+        else {
+            tea_process_state = TEA_CHAMBER_POWDER_AND_WATER_ADDING;
+            Serial.println(F("TEA_PREPARATION_PROCESS : LEAD SCREW IS NOT   AT BOTTOM POSITION, MOVING TO TEA_CHAMBER_POWDER_AND_WATER_ADDING STATE"));
+            Tea_preparation_Wait_Time = 0;  
+        }
+        break;
+
+    case TEA_CHAMBER_MAX_POWDER_ADDING_WAIT_TIME :
+        if(Tea_preparation_Wait_Time >= MAX_TIME_FOR_TEA_POWDER_ADDING){
+            digitalWrite(CAN_1,STS_OFF);
+            Serial.println(F("TEA_PREPARATION_PROCESS : MAX TIME REACHED FOR ADDING POWDER IN PREPARATION CHAMBER, TURNING OFF THE CANISTER_MOTOR"));
+            tea_process_state = TEA_CHAMBER_DECOTION_PREPARATION;
+            Serial.println(F("TEA_PREPARATION_PROCESS : MOVING TO TEA_CHAMBER_DECOTION_PREPARATION STATE"));    
+            Tea_preparation_Wait_Time = 0;
+        }
+        else {
+            Tea_preparation_Wait_Time++;
+        }
+        break;
+
+    case TEA_CHAMBER_DECOTION_PREPARATION:
+        if(pinNumber[2] == PREP_CHAMBER_FLOAT_LOW  && float_level[2] == LOW){
+            digitalWrite(WATER_PUMP_1,STS_OFF);
+            digitalWrite(PT_HEATER,STS_ON);
+            Serial.println(F("TEA_PREPARATION_PROCESS : THE FLOAT LEVEL SWITCH IN THE PREPARATION CHAMBER IS LOW, TURNING OFF THE WATER_PUMP_1 AND TURNING ON THE PT_HEATER"));
+            tea_process_state = TEA_CHAMBER_DECOTION_READY;
+            Serial.println(F("TEA_PREPARATION_PROCESS : MOVING TO TEA_CHAMBER_DECOTION_READY STATE"));    
+            Tea_preparation_Wait_Time = 0;
+        }  
+        else {
+            if(Tea_preparation_Wait_Time >= MAX_TIME_FOR_WATER_ADDING_AFTER_POWDER_ADDING){
+                digitalWrite(WATER_PUMP_1,STS_OFF);
+                Serial.println(F("TEA_PREPARATION_PROCESS : MAX TIME REACHED FOR TREATING TEA DECOCTION IN PREPARATION CHAMBER, TURNING OFF THE WATER_PUMP_1"));
+                tea_process_state = TEA_CHAMBER_TEA_PREPARATION_PROCESS_FAILED;
+                Serial.println(F("TEA_PREPARATION_PROCESS : MOVING TO TEA_CHAMBER_TEA_PREPARATION_PROCESS_FAILED STATE"));    
+                Tea_preparation_Wait_Time = 0;
+
+            }
+            else {
+                Tea_preparation_Wait_Time++;
+            }
+        }
+        break;
+    case TEA_CHAMBER_DECOTION_READY:
+       if(Temp_PinNumber[0] == PT_TEMP_PIN_NO && PT_TEMP >= MAX_DECOTION_BOILING_TEMPERATURE){
+            digitalWrite(PT_HEATER,STS_OFF);
+            digitalWrite(ST_TEA_INLET_SV,STS_ON);
+            Serial.println(F("TEA_PREPARATION_PROCESS : THE TEMPERATURE IN THE PREPARATION CHAMBER HAS REACHED THE MAX DECOTION BOILING TEMPERATURE, TURNING OFF THE PT_HEATER AND TURNING ON THE ST_TEA_INLET_SV"));
+            tea_process_state = TEA_CHAMBER_TURN_ON_ST_INLET_SV;        
+            Serial.println(F("TEA_PREPARATION_PROCESS : MOVING TO TEA_CHAMBER_TURN_ON_ST_INLET_SV STATE"));    
+            Tea_preparation_Wait_Time = 0;
+       }
+       else {
+        if(Tea_preparation_Wait_Time >= MAX_TIME_FOR_DECOTION_PREPARATION){
+            digitalWrite(PT_HEATER,STS_OFF);
+            Serial.println(F("TEA_PREPARATION_PROCESS : MAX TIME REACHED FOR TREATING TEA DECOCTION IN PREPARATION CHAMBER, TURNING OFF THE PT_HEATER"));
+            tea_process_state = TEA_CHAMBER_TEA_PREPARATION_PROCESS_FAILED;
+            Serial.println(F("TEA_PREPARATION_PROCESS : MOVING TO TEA_CHAMBER_TEA_PREPARATION_PROCESS_FAILED STATE"));    
+            Tea_preparation_Wait_Time = 0;
+
+        }
+        else {
+            Tea_preparation_Wait_Time++;
+        }
+       }
+        break;
+    case TEA_CHAMBER_TURN_ON_ST_INLET_SV:
+        if(Tea_preparation_Wait_Time >= MAX_TIME_TO_DESPENSE_TEA_INTO_ST){
+            tea_process_state = TEA_CHAMBER_OVERALL_TEA_DESPENSING;
+            Serial.println(F("TEA_PREPARATION_PROCESS : MOVING TO TEA_CHAMBER_OVERALL_TEA_DESPENSING STATE"));    
+            Tea_preparation_Wait_Time = 0;
+        }
+        else  {
+            Tea_preparation_Wait_Time++;
+        }
+        break;
+    case TEA_CHAMBER_OVERALL_TEA_DESPENSING:
+        if(Tea_preparation_Wait_Time >= MAX_TIME_TO_DESPENSE_OVERALL_TEA_INTO_ST){
+            digitalWrite(ST_TEA_INLET_SV,STS_OFF);
+            Serial.println(F("TEA_PREPARATION_PROCESS : MAX TIME REACHED FOR DESPENSING TEA INTO STORAGE CHAMBER, TURNING OFF THE ST_TEA_INLET_SV"));
+            tea_process_state = TEA_CHAMBER_REMOVE_TEA_POWDER_WASTAGE;
+            Serial.println(F("TEA_PREPARATION_PROCESS : MOVING TO TEA_CHAMBER_REMOVE_TEA_POWDER_WASTAGE STATE"));    
+            Tea_preparation_Wait_Time = 0;
+        }
+        else  {
+            Tea_preparation_Wait_Time++;
+        }   
+        break;
+    case TEA_CHAMBER_REMOVE_TEA_POWDER_WASTAGE:
+        if(Tea_preparation_Wait_Time >= MAX_TIME_FOR_REMOVING_TEA_POWDER_WASTAGE){
+            tea_process_state = TEA_CHAMBER_EMPTY;
+            Serial.println(F("TEA_PREPARATION_PROCESS : MOVING TO TEA_CHAMBER_EMPTY STATE"));    
+            Tea_preparation_Wait_Time = 0;
+        }  
+        else {
+            Tea_preparation_Wait_Time++;
+        }
+        break;
+
+    case TEA_CHAMBER_TEA_PREPARATION_PROCESS_FAILED:
+        if(Tea_preparation_Wait_Time >= MAX_TIME_FOR_PROCESS_FAILED_STATE){
+            Serial.println(F("TEA_PREPARATION_PROCESS : FAILED STATE TIME OVER, RETRYING THE PROCESS WHERE IT FAILED"));    
+            Tea_preparation_Wait_Time = 0;
+        }  
+        else {
+            Tea_preparation_Wait_Time++;
+        }
+        break;
+    }
+}
+
+
+void Lead_screw_Controlling_for_Tea_Preparation_Process(){
+    switch(lead_screw_drive){
+    case LEAD_SCREW_OFF:
+        if(tea_process_state == TEA_CHAMBER_EMPTY || tea_process_state == TEA_CHAMBER_POWDER_AND_WATER_ADDING){ 
+            digitalWrite(L293D_MOTOR_DIR_1,STS_OFF);
+            digitalWrite(L293D_MOTOR_DIR_2,STS_OFF);
+            Serial.println(F("LEAD_SCREW_CONTROL : LEAD SCREW IS OFF"));
+            lead_screw_drive_wait_time = 0;
+        }
+        else if(tea_process_state == TEA_CHAMBER_REMOVE_TEA_POWDER_WASTAGE){
+            digitalWrite(L293D_MOTOR_DIR_1,STS_ON);
+            digitalWrite(L293D_MOTOR_DIR_2,STS_OFF);
+            lead_screw_drive = LEAD_SCREW_BOTTOM_TO_TOP;
+            Serial.println(F("LEAD_SCREW_CONTROL : MOVING THE LEAD SCREW FROM BOTTOM TO TOP"));
+            lead_screw_drive_wait_time = 0;
+        }
+        else {
+            if(tea_process_state < TEA_CHAMBER_POWDER_AND_WATER_ADDING && SCREW_POSITION_STATE == false){
+                digitalWrite(L293D_MOTOR_DIR_1,STS_ON);
+                digitalWrite(L293D_MOTOR_DIR_2,STS_OFF);
+                lead_screw_drive = LEAD_SCREW_BOTTOM_TO_TOP;
+                Serial.println(F("LEAD_SCREW_CONTROL : MOVING THE LEAD SCREW FROM BOTTOM TO TOP"));
+                lead_screw_drive_wait_time = 0;
+            }
+            else {
+                if(SCREW_POSITION_STATE == true){
+                    digitalWrite(L293D_MOTOR_DIR_1,STS_ON);
+                    digitalWrite(L293D_MOTOR_DIR_2,STS_OFF);
+                    lead_screw_drive = LEAD_SCREW_TOP;
+                    Serial.println(F("LEAD_SCREW_CONTROL : MOVING THE LEAD SCREW TO TOP POSITION"));
+                    lead_screw_drive_wait_time = 0;
+                }
+            }
+        }
+        break;
+
+    case LEAD_SCREW_BOTTOM_TO_TOP:
+        if(tea_process_state < TEA_CHAMBER_POWDER_AND_WATER_ADDING && digitalRead(LEAD_SCREW_FEEDBACK_PUSHBUTTON)== HIGH){
+            digitalWrite(L293D_MOTOR_DIR_1,STS_OFF);
+            digitalWrite(L293D_MOTOR_DIR_2,STS_ON);
+            lead_screw_drive = LEAD_SCREW_NUT_ROTATING_BACKWARD;
+            Serial.println(F("LEAD_SCREW_CONTROL : LEAD SCREW HAS REACHED TOP POSITION, ROTATING THE NUT BACKWARD"));
+            lead_screw_drive_wait_time = 0;
+        }
+        else if(tea_process_state == TEA_CHAMBER_REMOVE_TEA_POWDER_WASTAGE){
+            digitalWrite(L293D_MOTOR_DIR_1,STS_ON);
+            digitalWrite(L293D_MOTOR_DIR_2,STS_OFF);
+            lead_screw_drive = LEAD_SCREW_NUT_ROTATE_AT_TOP;
+            Serial.println(F("LEAD_SCREW_CONTROL :LEAD SCREW HAS REACHED TOP POSITION, ROTATING THE NUT BACKWARD"));
+            lead_screw_drive_wait_time = 0;
+        }
+        else {
+            if(SCREW_POSITION_STATE == true){
+                digitalWrite(L293D_MOTOR_DIR_1,STS_ON);
+                digitalWrite(L293D_MOTOR_DIR_2,STS_OFF);
+                lead_screw_drive = LEAD_SCREW_TOP;
+                Serial.println(F("LEAD_SCREW_CONTROL : MOVING THE LEAD SCREW TO TOP POSITION"));
+                lead_screw_drive_wait_time = 0;
+            }
+        }
+        break; 
+    case LEAD_SCREW_NUT_ROTATE_AT_TOP :
+        if(lead_screw_drive_wait_time >= MAX_TIME_FOR_NUT_ROTATING_AT_TOP){
+            digitalWrite(L293D_MOTOR_DIR_1,STS_OFF);
+            digitalWrite(L293D_MOTOR_DIR_2,STS_ON);
+            lead_screw_drive = LEAD_SCREW_NUT_ROTATING_BACKWARD;
+            Serial.println(F("LEAD_SCREW_CONTROL : ROTATING THE NUT BACKWARD"));
+            lead_screw_drive_wait_time = 0; 
+        }
+        else {
+            lead_screw_drive_wait_time++;
+        }
+        break;
+    case LEAD_SCREW_NUT_ROTATING_BACKWARD:
+        if((lead_screw_drive_wait_time >= MAX_TIME_FOR_NUT_ROTATING_BACKWARD && counter != 3 && SCREW_POSITION_STATE == false) || (tea_process_state == TEA_CHAMBER_REMOVE_TEA_POWDER_WASTAGE && lead_screw_drive_wait_time >= MAX_TIME_FOR_NUT_ROTATING_BACKWARD && counter != 3)){
+            digitalWrite(L293D_MOTOR_DIR_1, STS_ON);
+            digitalWrite(L293D_MOTOR_DIR_2, STS_OFF);  
+            lead_screw_drive = LEAD_SCREW_NUT_ROTATING_FORWARD;
+            Serial.println(F("LEAD_SCREW_CONTROL : ROTATING THE NUT UPWARDS"));
+            lead_screw_drive_wait_time = 0; 
+        }
+        else if(tea_process_state == TEA_CHAMBER_REMOVE_TEA_POWDER_WASTAGE || counter == 3){
+            digitalWrite(L293D_MOTOR_DIR_1,STS_ON);
+            digitalWrite(L293D_MOTOR_DIR_2,STS_OFF);
+            lead_screw_drive = LEAD_SCREW_TOP;
+            Serial.println(F("LEAD_SCREW_CONTROL : MOVING THE LEAD SCREW TO TOP POSITION"));
+            lead_screw_drive_wait_time = 0;
+            counter = 0;
+        }
+        else {
+            if(SCREW_POSITION_STATE == true || counter == 3){
+                digitalWrite(L293D_MOTOR_DIR_1,STS_ON);
+                digitalWrite(L293D_MOTOR_DIR_2,STS_OFF);
+                lead_screw_drive = LEAD_SCREW_TOP;
+                Serial.println(F("LEAD_SCREW_CONTROL : MOVING THE LEAD SCREW TO TOP POSITION"));
+                lead_screw_drive_wait_time = 0;
+                counter = 0;
+            }
+            else {
+                lead_screw_drive_wait_time++;
+            }
+        }
+        break;
+
+    case LEAD_SCREW_NUT_ROTATING_FORWARD:
+        if((lead_screw_drive_wait_time >= MAX_TIME_FOR_NUT_ROTATING_FORWARD && SCREW_POSITION_STATE == false) || (tea_process_state == TEA_CHAMBER_REMOVE_TEA_POWDER_WASTAGE && lead_screw_drive_wait_time >= MAX_TIME_FOR_NUT_ROTATING_BACKWARD && counter != 3)){
+            digitalWrite(L293D_MOTOR_DIR_1,STS_OFF);
+            digitalWrite(L293D_MOTOR_DIR_2,STS_ON);
+            lead_screw_drive = LEAD_SCREW_NUT_ROTATING_BACKWARD;
+            Serial.println(F("LEAD_SCREW_CONTROL : MOVING THE LEAD SCREW FROM BOTTOM TO TOP"));
+            lead_screw_drive_wait_time = 0; 
+            counter++;
+        }
+        else if(tea_process_state == TEA_CHAMBER_REMOVE_TEA_POWDER_WASTAGE || counter == 3){
+            digitalWrite(L293D_MOTOR_DIR_1,STS_ON);
+            digitalWrite(L293D_MOTOR_DIR_2,STS_OFF);
+            lead_screw_drive = LEAD_SCREW_TOP;
+            Serial.println(F("LEAD_SCREW_CONTROL : MOVING THE LEAD SCREW TO TOP POSITION"));
+            lead_screw_drive_wait_time = 0;
+            counter = 0;
+        }
+        else {
+            if(SCREW_POSITION_STATE == true || counter == 3){
+                digitalWrite(L293D_MOTOR_DIR_1,STS_ON);
+                digitalWrite(L293D_MOTOR_DIR_2,STS_OFF);
+                lead_screw_drive = LEAD_SCREW_TOP;
+                Serial.println(F("LEAD_SCREW_CONTROL : MOVING THE LEAD SCREW TO TOP POSITION"));
+                lead_screw_drive_wait_time = 0;
+                counter = 0;
+            }
+            else {
+                lead_screw_drive_wait_time++;
+            }
+        }
+        break;
+
+
+    case LEAD_SCREW_TOP:
+        if(digitalRead(LEAD_SCREW_FEEDBACK_PUSHBUTTON) == HIGH){
+            digitalWrite(L293D_MOTOR_DIR_1, STS_OFF);
+            digitalWrite(L293D_MOTOR_DIR_2, STS_ON); 
+            screw_halt = 0;
+            lead_screw_drive = LEAD_SCREW_BOTTOM;
+            Serial.println(F("LEAD_SCREW_CONTROL : LEAD SCREW HAS REACHED TOP POSITION, MOVING TO BOTTOM POSITION"));
+            lead_screw_drive_wait_time = 0;
+        }
+        else {
+            if (lead_screw_drive_wait_time >= MAXIMUM_WAIT_TIME_TAKEN_NUT_TO_REACH_UPWARD_DIRECTION) {
+                digitalWrite(L293D_MOTOR_DIR_1, STS_OFF);
+                digitalWrite(L293D_MOTOR_DIR_2, STS_OFF);
+                Serial.println("The Nut Failed / Timeout");
+                Serial.println("current state -> LEAD_SCREW_TOP to next state -> LEAD_SCREW_DRIVE_IN_FAILED");
+                lead_screw_drive = LEAD_SCREW_DRIVE_IN_FAILED;
+                lead_screw_drive_wait_time = 0;
+                counter = 0;
+            }
+            else {
+                lead_screw_drive_wait_time++;
+            }
+        }
+        break;
+
+    case LEAD_SCREW_BOTTOM:
+       if (lead_screw_drive_wait_time >= MAX_TIME_TO_REACH_THE_BOTTOM_OF_FILTER) {
+            digitalWrite(L293D_MOTOR_DIR_1, STS_OFF);
+            digitalWrite(L293D_MOTOR_DIR_2, STS_OFF);
+            screw_halt = 1;
+            Serial.println(screw_halt);
+            Serial.println("The Nut Stopped at Bottom");
+            Serial.println("current state -> LEAD_SCREW_BOTTOM to next state -> LEAD_SCREW_OFF");
+            lead_screw_drive = LEAD_SCREW_OFF;
+            lead_screw_drive_wait_time = 0;
+        }
+        else {
+            lead_screw_drive_wait_time++;
+        }
+        break;
+
+    case LEAD_SCREW_DRIVE_IN_FAILED:
+        if(lead_screw_drive_wait_time >= 2000){
+            Serial.println(F("LEAD_SCREW_CONTROL : DRIVE IN FAILED"));
+            lead_screw_drive_wait_time = 0;
+        }
+        else {
+            lead_screw_drive_wait_time++;
+        }
+        break;
+    }
+}
+
+/*
+void Finding_lead_screw_nut_position() {
+  switch (lead_screw_position) {
+    case LEAD_SCREW_POSITION_NUT_TO_TOP:
+      if (lead_screw_drive_wait_time >= MAXIMUM_WAIT_TIME_TAKEN_NUT_TO_REACH_UPWARD_DIRECTION ||
+           digitalRead(LEAD_SCREW_FEEDBACK_PUSHBUTTON) == HIGH) {
+        digitalWrite(L293D_MOTOR_DIR_1, STS_OFF);
+        digitalWrite(L293D_MOTOR_DIR_2, STS_ON);
+        Serial.println(F("LEAD SCREW NUT POSITION: RUNNING THE MOTOR IN REVERSE DIRECTION"));
+        lead_screw_position = LEAD_SCREW_POSITION_NUT_TO_BOTTOM;
+        Serial.println(F("CURRENT: NUT_TO_TOP → NEXT: BOTTOM"));
+        lead_screw_drive_wait_time = 0;
+      } else {
+        lead_screw_drive_wait_time++;
+      }
+      break;
+
+    case LEAD_SCREW_POSITION_UNKNOWN_AND_KNOWN:
+      if (digitalRead(LEAD_SCREW_FEEDBACK_PUSHBUTTON) == LOW ) {
+        digitalWrite(L293D_MOTOR_DIR_1, STS_ON);
+        digitalWrite(L293D_MOTOR_DIR_2, STS_OFF);
+        Serial.println(F("NUT POSITION: RUNNING THE MOTOR FORWARD DIRECTION"));
+        lead_screw_position = LEAD_SCREW_POSITION_NUT_TO_TOP;
+        Serial.println(F("CURRENT: UNKNOWN_AND_KNOWN → NEXT: TOP"));
+      } else {
+        digitalWrite(L293D_MOTOR_DIR_1, STS_OFF);
+        digitalWrite(L293D_MOTOR_DIR_2, STS_ON);
+        Serial.println(F("NUT POSITION: RUNNING THE MOTOR BACKWARD DIRECTION"));
+        lead_screw_position = LEAD_SCREW_POSITION_NUT_TO_BOTTOM;
+        Serial.println(F("CURRENT: UNKNOWN_AND_KNOWN → NEXT: BOTTOM"));
+      }
+      lead_screw_drive_wait_time = 0;
+      
+      break;
+
+    case LEAD_SCREW_POSITION_NUT_TO_BOTTOM:
+      if (lead_screw_drive_wait_time >= MAX_TIME_TO_REACH_THE_BOTTOM_OF_FILTER) {
+        digitalWrite(L293D_MOTOR_DIR_1, STS_OFF);
+        digitalWrite(L293D_MOTOR_DIR_2, STS_OFF);
+        Serial.println(F("NUT POSITION: AT BOTTOM — MOTOR STOPPED"));
+        screw_halt = 1;
+        Serial.println(F("TEA PROCESS STARTING"));
+      } else {
+        lead_screw_drive_wait_time++;
+      }
+      break;
+  }
+}
+
+
+void Full_cleaning_cycle_lead_screw_driving(){
+  switch(lead_screw_drive){
+    case LEAD_SCREW_OFF :
+      if(full_cycle >= TEA_FULL_CYCLE_WATER_ADDING){
+        digitalWrite(L293D_MOTOR_DIR_1,STS_ON);
+        digitalWrite(L293D_MOTOR_DIR_2,STS_OFF);
+        Serial.println(F("LEAD_SCREW_PROCESS_IN_CLEANING : THE LEAD SCREW NUT IS MOVING UPWARDS"));
+        lead_screw_drive = LEAD_SCREW_BOTTOM_TO_TOP;
+        Serial.println(F("LEAD_SCREW_PROCESS_IN_CLEANING : CURRENT STATE -> LEAD_SCREW_OFF AND NEXT STATE -> LEAD_SCREW_BOTTOM_TO_TOP"));
+        lead_screw_drive_wait_time = 0;
+      }
+      else {
+        digitalWrite(L293D_MOTOR_DIR_1,STS_OFF);
+        digitalWrite(L293D_MOTOR_DIR_2,STS_OFF);
+        lead_screw_drive = LEAD_SCREW_OFF;
+        Serial.println(F("LEAD_SCREW_PROCESS_IN_CLEANING : CURRENT STATE -> LEAD_SCREW_OFF AND NEXT STATE -> LEAD_SCREW_OFF"));
+        lead_screw_drive_wait_time = 0;
+      }
+      break;
+    case LEAD_SCREW_BOTTOM_TO_TOP :
+      if(digitalRead(LEAD_SCREW_FEEDBACK_PUSHBUTTON) == HIGH && full_cycle != TEA_FULL_CYCLE_OVER_ALL_WATER_DESPENSING_WATER_TO_ST_CHAMBER){
+        digitalWrite(L293D_MOTOR_DIR_1,STS_OFF);
+        digitalWrite(L293D_MOTOR_DIR_2,STS_ON);
+        Serial.println(F("LEAD_SCREW_PROCESS_IN_CLEANING : THE LEAD SCREW NUT IS MOVING DOWNWARDS"));
+        lead_screw_drive = LEAD_SCREW_TOP_TO_BOTTOM;
+        Serial.println(F("LEAD_SCREW_PROCESS_IN_CLEANING : CURRENT STATE -> LEAD_SCREW_BOTTOM_TO_TOP AND NEXT STATE -> LEAD_SCREW_TOP_TO_BOTTOM"));
+        lead_screw_drive_wait_time = 0;
+      }
+      else if(full_cycle >= TEA_FULL_CYCLE_OVER_ALL_WATER_DESPENSING_WATER_TO_ST_CHAMBER){
+        digitalWrite(L293D_MOTOR_DIR_1,STS_ON);
+        digitalWrite(L293D_MOTOR_DIR_2,STS_OFF);
+        Serial.println(F("LEAD_SCREW_PROCESS_IN_CLEANING : THE LEAD SCREW NUT IS MOVING UPWARDS"));
+        lead_screw_drive = LEAD_SCREW_TOP;
+        Serial.println(F("LEAD_SCREW_PROCESS_IN_CLEANING : CURRENT STATE -> LEAD_SCREW_BOTTOM_TO_TOP AND NEXT STATE -> LEAD_SCREW_TOP"));
+        lead_screw_drive_wait_time = 0;
+      }
+      else {
+        if(lead_screw_drive_wait_time >= MAXIMUM_WAIT_TIME_TAKEN_NUT_TO_REACH_UPWARD_DIRECTION){
+          digitalWrite(L293D_MOTOR_DIR_1,STS_OFF);
+          digitalWrite(L293D_MOTOR_DIR_2,STS_OFF);
+          Serial.println(F("LEAD_SCREW_PROCESS_IN_CLEANING : THE LEAD SCREW NUT STOPPED"));
+          lead_screw_drive = LEAD_SCREW_DRIVE_IN_CLEANING_FAILED;
+          Serial.println(F("LEAD_SCREW_PROCESS_IN_CLEANING : CURRENT STATE -> LEAD_SCREW_BOTTOM_TO_TOP AND NEXT STATE -> LEAD_SCREW_DRIVE_IN_CLEANING_FAILED"));
+          lead_screw_drive_wait_time = 0;
+        }
+        else {
+          lead_screw_drive_wait_time ++;
+        }
+      }
+      break;
+
+    case LEAD_SCREW_TOP_TO_BOTTOM :  
+      if(lead_screw_drive_wait_time >= MAX_TIME_TO_REACH_THE_BOTTOM_OF_FILTER && full_cycle != TEA_FULL_CYCLE_OVER_ALL_WATER_DESPENSING_WATER_TO_ST_CHAMBER){
+        digitalWrite(L293D_MOTOR_DIR_2,STS_OFF);
+        digitalWrite(L293D_MOTOR_DIR_1,STS_ON);
+        Serial.println(F("LEAD_SCREW_PROCESS_IN_CLEANING : THE LEAD SCREW NUT IS MOVING UPWARDS"));
+        lead_screw_drive = LEAD_SCREW_BOTTOM_TO_TOP;
+        Serial.println(F("LEAD_SCREW_PROCESS_IN_CLEANING : CURRENT STATE -> LEAD_SCREW_TOP_TO_BOTTOM AND NEXT STATE -> LEAD_SCREW_BOTTOM_TO_TOP"));
+        lead_screw_drive_wait_time = 0;
+      }
+      else {
+        if(full_cycle >= TEA_FULL_CYCLE_OVER_ALL_WATER_DESPENSING_WATER_TO_ST_CHAMBER){
+          digitalWrite(L293D_MOTOR_DIR_1,STS_ON);
+          digitalWrite(L293D_MOTOR_DIR_2,STS_OFF);
+          Serial.println(F("LEAD_SCREW_PROCESS_IN_CLEANING : THE LEAD SCREW NUT IS MOVING UPWARDS"));
+          lead_screw_drive = LEAD_SCREW_TOP;
+          Serial.println(F("LEAD_SCREW_PROCESS_IN_CLEANING : CURRENT STATE -> LEAD_SCREW_TOP_TO_BOTTOM AND NEXT STATE -> LEAD_SCREW_TOP"));
+          lead_screw_drive_wait_time = 0;
+        }
+        else {
+          lead_screw_drive_wait_time ++;
+        }
+      }
+      break;
+    
+    case LEAD_SCREW_TOP :
+      if(digitalRead(LEAD_SCREW_FEEDBACK_PUSHBUTTON) == HIGH){
+        digitalWrite(L293D_MOTOR_DIR_1,STS_OFF);
+        digitalWrite(L293D_MOTOR_DIR_2,STS_ON);
+        Serial.println(F("LEAD_SCREW_PROCESS_IN_CLEANING : THE LEAD SCREW NUT IS MOVING DOWNWARDS"));
+        lead_screw_drive = LEAD_SCREW_BOTTOM;
+        Serial.println(F("LEAD_SCREW_PROCESS_IN_CLEANING : CURRENT STATE -> LEAD_SCREW_TOP AND NEXT STATE -> LEAD_SCREW_BOTTOM"));
+        lead_screw_drive_wait_time = 0;
+      }
+      else {
+        if(lead_screw_drive_wait_time >= MAXIMUM_WAIT_TIME_TAKEN_NUT_TO_REACH_UPWARD_DIRECTION){
+          digitalWrite(L293D_MOTOR_DIR_1,STS_OFF);
+          digitalWrite(L293D_MOTOR_DIR_2,STS_OFF);
+          lead_screw_drive = LEAD_SCREW_DRIVE_IN_CLEANING_FAILED;
+          Serial.println(F("LEAD_SCREW_PROCESS_IN_CLEANING : CURRENT STATE -> LEAD_SCREW_TOP AND NEXT STATE -> LEAD_SCREW_DRIVE_IN_CLEANING_FAILED"));
+          lead_screw_drive_wait_time = 0;
+        }
+        else {
+          lead_screw_drive_wait_time ++;
+        }
+      }
+      break;
+    case LEAD_SCREW_BOTTOM : 
+      if(lead_screw_drive_wait_time >= MAX_TIME_TO_REACH_THE_BOTTOM_OF_FILTER){
+        digitalWrite(L293D_MOTOR_DIR_1,STS_OFF);
+        digitalWrite(L293D_MOTOR_DIR_2,STS_OFF);
+        Serial.println(F("LEAD_SCREW_PROCESS_IN_CLEANING : CURRENT STATE -> LEAD_SCREW_BOTTOM AND NEXT STATE -> LEAD_SCREW_OFF"));
+        lead_screw_drive = LEAD_SCREW_OFF;
+        lead_screw_drive_wait_time = 0;
+      } 
+      else {
+        lead_screw_drive_wait_time ++;
+      }
+      break;
+
+    case LEAD_SCREW_DRIVE_IN_CLEANING_FAILED :
+      if(lead_screw_drive_wait_time >= 2000){
+        Serial.println(F("LEAD_SCREW_PROCESS_IN_CLEANING : ENCOUNTERED AN ISSUE"));
+        lead_screw_drive_wait_time = 0;
+      }
+      else {
+        lead_screw_drive_wait_time ++;
+      }
+      break;
+  }
+}
+
+
+void Storage_chamber_process(){ 
+  static unsigned long int storage_chamber_wait_time = 0;
+  switch(storage_chamber){
+  case STORAGE_CHAMBER_TEA_LEVEL_CHECK_AND_TEMPERATURE_CHECK:
+    if(pinNumber[5] == STORAGE_CHAMBER_FLOAT_LOW && float_level[5] == LOW){
+      if(Temp_PinNumber[1] == ST_TEMP_PIN_NO && ST_TEMP >= MAX_TEMP_OF_ST_CHAMBER){
+        storage_chamber = STORAGE_CHAMBER_CONSTANT_TEMPERATURE_MAINTAINCE;
+        Serial.println(F("STORAGE CHAMBER: Tea present and temperature already at or above maximum → NEXT: CONSTANT_TEMPERATURE_MAINTAINCE"));
+        storage_chamber_wait_time = 0;
+      }
+      else {
+        digitalWrite(ST_HEATER,STS_ON);
+        Serial.println(F("STORAGE CHAMBER: Tea present, temperature below maximum → Turning ON heater"));
+        storage_chamber = STORAGE_CHAMBER_HEATER_ON;
+        Serial.println(F("STORAGE CHAMBER : NEXT STATE -> STORAGE_CHAMBER_HEATER_ON"));
+        storage_chamber_wait_time = 0;
+      }
+    }
+    else {
+      Serial.println(F("STORAGE CHAMBER : THERE IS NO AVAILABILITY OF TEA IN STORAGE"));
+    }
+    break;
+
+    case STORAGE_CHAMBER_HEATER_ON :
+      if(Temp_PinNumber[1] == ST_TEMP_PIN_NO && ST_TEMP >= MAX_TEMP_OF_ST_CHAMBER){
+        digitalWrite(ST_HEATER,STS_OFF);
+        Serial.println(F("STORAGE CHAMBER : THE TEMPERATURE HAS BEEN REACHED SO TURNING OFF ST_HEATER"));
+        storage_chamber = STORAGE_CHAMBER_CONSTANT_TEMPERATURE_MAINTAINCE;
+        Serial.println(F("STORAGE CHAMBER : NEXT STATE -> STORAGE_CHAMBER_CONSTANT_TEMPERATURE_MAINTAINCE"));
+        storage_chamber_wait_time = 0;
+      }
+      else {
+        if(storage_chamber_wait_time >= ST_MAX_TIME_TO_ATTAIN_THE_TEMPERATURE){
+          digitalWrite(ST_HEATER,STS_OFF);
+          Serial.println(F("STORAGE CHAMBER : TURNING OFF ST HEATER DUE TO NOT ATTAINING THE REQUIRED TEMPERATURE DUE TO TIMEOUT"));
+          storage_chamber = STORAGE_CHAMBER_PROCESS_FAILED;
+          Serial.println(F("STORAGE CHAMBER : NEXT STATE -> STORAGE_CHAMBER_PROCESS_FAILED"));
+        } 
+        else {
+          storage_chamber_wait_time++;
+        }
+      }
+      break;
+    
+    case STORAGE_CHAMBER_CONSTANT_TEMPERATURE_MAINTAINCE :
+      if(Temp_PinNumber[1] == ST_TEMP_PIN_NO && ST_TEMP <= MIN_TEMP_OF_ST_CHAMBER){
+        digitalWrite(ST_HEATER,STS_ON);
+        Serial.println(F("STORAGE CHAMBER : TURNING ON THE HEATER BECAUSE OF MIN TEMP IN STORAGE CHAMBER"));
+        storage_chamber = STORAGE_CHAMBER_HEATER_ON;
+        Serial.println(F("STORAGE CHAMBER : NEXT STATE -> STORAGE_CHAMBER_HEATER_ON"));
+        storage_chamber_wait_time = 0;
+      }
+      else {
+        storage_chamber = STORAGE_CHAMBER_CONSTANT_TEMPERATURE_MAINTAINCE;
+        Serial.println(F("STORAGE CHAMBER : NEXT STATE -> STORAGE_CHAMBER_CONSTANT_TEMPERATURE_MAINTAINCE"));
+        storage_chamber_wait_time = 0;
+      }
+      break;
+    
+    case STORAGE_CHAMBER_PROCESS_FAILED :
+      if(storage_chamber_wait_time >= 2000){
+        Serial.println(F("STORAGE CHAHMBER : ENCOUNTERED AN ISSUE"));
+        storage_chamber_wait_time = 0;
+      }
+      else {
+        storage_chamber_wait_time++;
+      }
+      break;
+  }
+}
+
+
+void full_cycle_cleaning_process(){
+  switch(full_cycle){
+    case TEA_FULL_CYCLE_PROCESS_START :
+    if(pinNumber[1] == WATER_BUBBLE_2_FLOAT_LEVEL_LOW && float_level[1] == LOW) {
+      if(pinNumber[4] == STORAGE_CHAMBER_FLOAT_LOW && float_level[4] == HIGH){
+        if(pinNumber[2] == PREP_CHAMBER_FLOAT_LOW && float_level[2] == HIGH){
+          digitalWrite(PT_TANK_SV,STS_ON);
+          Serial.print("FULL_CYCLE_CLEAN : TURNING ON THE PT_TANK_SV");
+          full_cycle = TEA_FULL_CYCLE_TURN_ON_PT_TANK_SV;
+          Serial.println(F("FULL_CYCLE_CLEAN : CURRENT STATE -> TEA_FULL_CYCLE_PROCESS_START TO NEXT STATE -> TEA_FULL_CYCLE_TURN_ON_PT_TANK_SV"));
+          Debug_stng = "";
+          Cleaning_Cycle_Tea_Wait_Time = 0;
+        }
+        else {
+          digitalWrite(ST_TEA_INLET_SV,STS_ON);
+          full_cycle  = TEA_FULL_CYCLE_TEA_DESPENSING_IN_TO_ST_INLEL;
+          Serial.println(F("FULL_CYCLE_CLEAN : CURRENT STATE -> TEA_FULL_CYCLE_PROCESS_START TO NEXT STATE -> TEA_FULL_CYCLE_TEA_DESPENSING_IN_TO_ST_INLEL"));
+          Cleaning_Cycle_Tea_Wait_Time = 0;
+        }
+      }
+      else {
+        full_cycle = TEA_FULL_CYCLE_TEA_DESPENSING_OUT; 
+        Serial.println(F("FULL_CYCLE_CLEAN : CURRENT STATE -> TEA_FULL_CYCLE_PROCESS_START TO NEXT STATE -> TEA_FULL_CYCLE_TEA_DESPENSING_OUT"));
+        Cleaning_Cycle_Tea_Wait_Time = 0; 
+      }
+    }
+    else{
+      Serial.println(F("FULL_CYCLE_CLEAN : THERE IS NO ENOUGH WATER TO PERFORM CLEANING OPERATION"));
+    }
+    break;
+
+  case TEA_FULL_CYCLE_TEA_DESPENSING_IN_TO_ST_INLEL :
+    if(pinNumber[2] == PREP_CHAMBER_FLOAT_LOW && float_level[2] == HIGH) {
+      full_cycle = TEA_FULL_CYCLE_TEA_OVERALL_DESPENSING_TO_ST; 
+      Serial.println(F("FULL_CYCLE_CLEAN : CURRENT STATE -> TEA_FULL_CYCLE_TEA_DESPENSING_IN_TO_ST_INLEL TO NEXT STATE -> TEA_FULL_CYCLE_TEA_OVERALL_DESPENSING_TO_ST"));
+      Debug_stng = "";
+      Cleaning_Cycle_Tea_Wait_Time = 0;
+    }
+    else {
+      if(Cleaning_Cycle_Tea_Wait_Time >= MAX_WAIT_TIME_TO_DESPENSE_TEA_FROM_FLOAT_HIGH_LEVEL_TO_LOW){
+        digitalWrite(ST_TEA_INLET_SV,STS_OFF);
+        Debug_stng = "FULL_CYCLE_CLEAN : TURNING OFF THE ST_TEA_INLET_SV";
+        Serial.println(Debug_stng);
+        full_cycle = TEA_FULL_CYCLE_PROCESS_FAILED;
+        Debug_stng = "FULL_CYCLE_CLEAN : CURRENT STATE -> TEA_FULL_CYCLE_TEA_DESPENSING_IN_TO_ST_INLEL TO NEXT STATE -> TEA_FULL_CYCLE_PROCESS_FAILED";
+        Serial.println(Debug_stng);
+        Cleaning_Cycle_Tea_Wait_Time = 0;
+      }    
+      else {
+        Cleaning_Cycle_Tea_Wait_Time ++;
+      }
+    }
+    break; 
+  case TEA_FULL_CYCLE_TEA_OVERALL_DESPENSING_TO_ST:
+    if(Cleaning_Cycle_Tea_Wait_Time >=  MAX_TIME_TAKEN_TO_DESPENSING_THE_TEA_FROM_FLOAT_LEVEL_LOW_TO_EMPTY){
+      digitalWrite(ST_TEA_INLET_SV,STS_OFF);
+      Serial.println(F("FULL_CYCLE_CLEAN : TURNING OFF THE ST_TEA_INLET_SV"));
+      full_cycle = TEA_FULL_CYCLE_PROCESS_START;
+      Serial.println(F("FULL_CYCLE_CLEAN : CURRENT STATE -> TEA_FULL_CYCLE_TEA_OVERALL_DESPENSING_TO_ST TO NEXT STATE -> TEA_FULL_CYCLE_PROCESS_START"));
+      Debug_stng = "";
+      Cleaning_Cycle_Tea_Wait_Time = 0;
+    }
+    else {
+      Cleaning_Cycle_Tea_Wait_Time ++;
+    }
+    break;
+
+  case TEA_FULL_CYCLE_TEA_DESPENSING_OUT :
+    if(pinNumber[4] == STORAGE_CHAMBER_FLOAT_LOW && float_level[4] == HIGH){
+      full_cycle = TEA_FULL_CYCLE_TEA_OVERALL_DESPENSING_OUT; 
+      Serial.println(F("FULL_CYCLE_CLEAN : CURRENT STATE -> TEA_FULL_CYCLE_TEA_DESPENSING_OUT TO NEXT STATE -> TEA_FULL_CYCLE_TEA_OVERALL_DESPENSING_OUT"));
+      Debug_stng = "";
+      Cleaning_Cycle_Tea_Wait_Time = 0;
+    }
+    else {
+      if(Cleaning_Cycle_Tea_Wait_Time >= MAX_WAIT_TIME_TO_DESPENSE_TEA_FROM_FLOAT_HIGH_LEVEL_TO_LOW){
+        digitalWrite(ST_CLEANING_SV,STS_OFF);
+        Debug_stng = "FULL_CYCLE_CLEAN : TURNING OFF THE ST_CLEANING_SV";
+        Serial.println(Debug_stng);
+        full_cycle = TEA_FULL_CYCLE_PROCESS_FAILED;
+        Debug_stng = "FULL_CYCLE_CLEAN : CURRENT STATE -> TEA_FULL_CYCLE_TEA_DESPENSING_OUT TO NEXT STATE -> TEA_FULL_CYCLE_PROCESS_FAILED";
+        Serial.println(Debug_stng);
+        Cleaning_Cycle_Tea_Wait_Time = 0;
+      }    
+      else {
+        Cleaning_Cycle_Tea_Wait_Time ++;
+      }
+    }
+    break;
+  case TEA_FULL_CYCLE_TEA_OVERALL_DESPENSING_OUT :
+   if(Cleaning_Cycle_Tea_Wait_Time >=  MAX_TIME_TAKEN_TO_DESPENSING_THE_TEA_FROM_FLOAT_LEVEL_LOW_TO_EMPTY){
+      digitalWrite(ST_CLEANING_SV,STS_OFF);
+      Serial.println(F("FULL_CYCLE_CLEAN : TURNING OFF THE ST_CLEANING_SV"));
+      full_cycle = TEA_FULL_CYCLE_PROCESS_START;
+      Serial.println(F("FULL_CYCLE_CLEAN : CURRENT STATE -> TEA_FULL_CYCLE_TEA_OVERALL_DESPENSING_OUT TO NEXT STATE -> TEA_FULL_CYCLE_PROCESS_START"));
+      Cleaning_Cycle_Tea_Wait_Time = 0;
+    }
+    else {
+      Cleaning_Cycle_Tea_Wait_Time ++;
+    }
+    break;
+  case TEA_FULL_CYCLE_TURN_ON_PT_TANK_SV :
+    if(Cleaning_Cycle_Tea_Wait_Time >= MAX_TIME_TAKEN_TO_FULLY_TURN_ON_SOLENOID_VALVE){
+      digitalWrite(WATER_PUMP_1,STS_ON);
+      Serial.println(F("FULL_CYCLE_CLEAN : TURNING ON THE WATER_PUMP_1"));
+      full_cycle  = TEA_FULL_CYCLE_WATER_ADDING;
+      Serial.println(F("FULL_CYCLE_CLEAN : CURRENT STATE : TEA_FULL_CYCLE_TURN_ON_PT_TANK_SV TO NEXT STATE -> TEA_FULL_CYCLE_WATER_ADDING"));
+      Debug_stng = "";
+      Cleaning_Cycle_Tea_Wait_Time = 0;
+    }
+    else {
+      Cleaning_Cycle_Tea_Wait_Time ++;
+    }
+    break;
+  case TEA_FULL_CYCLE_WATER_ADDING :
+    if(pinNumber[3] == PREP_CHAMBER_FLOAT_HIGH && float_level[3] == HIGH){
+      digitalWrite(WATER_PUMP_1,STS_OFF);
+      digitalWrite(PT_TANK_SV,STS_OFF);
+      digitalWrite(PT_HEATER,STS_ON);
+      Serial.println(F("FULL_CYCLE_CLEAN : TURNING OFF WATER_PUMP1, PT_TANK_SV AND TURNING ON PT_HEATER"));
+      full_cycle  = TEA_FULL_CYCLE_WATER_HEATING;
+      Serial.println(F("FULL_CYCLE_CLEAN : CURRENT STATE : TEA_FULL_CYCLE_WATER_ADDING TO NEXT STATE -> TEA_FULL_CYCLE_WATER_HEATING"));
+      Debug_stng = "";
+      Cleaning_Cycle_Tea_Wait_Time = 0;
+    }
+    else {
+      if(Cleaning_Cycle_Tea_Wait_Time >= MAX_TIME_TO_FILL_PREP_CHAMBER_BY_PT_TANK_SV){
+        digitalWrite(WATER_PUMP_1,STS_OFF);
+        digitalWrite(PT_TANK_SV,STS_OFF);
+        Debug_stng = "FULL_CYCLE_CLEAN : TURNING OFF WATER_PUMP1, PT_TANK_SV AND TURNING ON PT_HEATER";
+        Serial.println(Debug_stng);
+        full_cycle = TEA_FULL_CYCLE_PROCESS_FAILED;
+        Debug_stng = "FULL_CYCLE_CLEAN : CURRENT STATE : TEA_FULL_CYCLE_WATER_ADDING TO NEXT STATE -> TEA_FULL_CYCLE_PROCESS_FAILED";
+        Serial.println(Debug_stng);
+        Cleaning_Cycle_Tea_Wait_Time = 0;
+      }
+      else {
+        Cleaning_Cycle_Tea_Wait_Time ++;
+      }
+    }
+    break;
+  case TEA_FULL_CYCLE_WATER_HEATING :
+    if(Temp_PinNumber[0] == PT_TEMP_PIN_NO && PT_TEMP  >= MAX_DECOTION_BOILING_TEMPERATURE){
+      digitalWrite(PT_HEATER,STS_OFF);
+      digitalWrite(ST_TEA_INLET_SV,STS_ON);
+      Serial.println(F("FULL_CYCLE_CLEAN : TURNING OFF HEATER AND TURNING ON THE ST_TEA_INLET_SV"));
+      full_cycle  = TEA_FULL_CYCLE_WATER_DESPENSING_TO_ST;
+      Serial.println(F("FULL_CYCLE_CLEAN : CURRENT STATE -> TEA_FULL_CYCLE_WATER_HEATING TO NEXT STATE -> TEA_FULL_CYCLE_WATER_DESPENSING_TO_ST"));
+      Debug_stng = "";
+      Cleaning_Cycle_Tea_Wait_Time = 0;
+    }
+    else {
+      if(Cleaning_Cycle_Tea_Wait_Time >= MAX_WATER_HEATING_WAIT_TIME){
+        digitalWrite(PT_HEATER,STS_OFF);
+        Serial.println(F("FULL_CYCLE_CLEAN : TURNING OFF THE HEATER"));
+        full_cycle  = TEA_FULL_CYCLE_PROCESS_FAILED;
+        Debug_stng = "FULL_CYCLE_CLEAN : CURRENT STATE -> TEA_FULL_CYCLE_WATER_HEATING TO NEXT STATE -> TEA_FULL_CYCLE_PROCESS_FAILED";
+        Serial.println(Debug_stng);
+        Cleaning_Cycle_Tea_Wait_Time = 0;
+      }
+      else {
+        Cleaning_Cycle_Tea_Wait_Time ++;
+      }
+    }
+    
+    break;
+  case TEA_FULL_CYCLE_WATER_DESPENSING_TO_ST :
+    if(pinNumber[2] ==  PREP_CHAMBER_FLOAT_LOW && float_level[2] == HIGH){
+      full_cycle  = TEA_FULL_CYCLE_OVER_ALL_WATER_DESPENSING_WATER_TO_ST_CHAMBER;
+      Serial.println(F("FULL_CYCLE_CLEAN : CURRENT STATE -> TEA_FULL_CYCLE_WATER_DESPENSING_TO_ST TO NEXT STATE -> TEA_FULL_CYCLE_OVER_ALL_WATER_DESPENSING_WATER_TO_ST_CHAMBER"));
+      Debug_stng = "";
+      Cleaning_Cycle_Tea_Wait_Time = 0;
+    }
+    else {
+      if(Cleaning_Cycle_Tea_Wait_Time >= MAX_WAIT_TIME_TO_DESPENSE_TEA_FROM_FLOAT_HIGH_LEVEL_TO_LOW){
+        digitalWrite(ST_TEA_INLET_SV,STS_OFF);
+        Serial.println(F("FULL_CYCLE_CLEAN : TURNING OFF THE ST_TEA_INLET_SV"));
+        full_cycle  = TEA_FULL_CYCLE_PROCESS_FAILED;
+        Debug_stng = "FULL_CYCLE_CLEAN : CURRENT STATE -> TEA_FULL_CYCLE_WATER_DESPENSING_TO_ST TO NEXT STATE -> TEA_FULL_CYCLE_PROCESS_FAILED";
+        Serial.println(Debug_stng);
+        Cleaning_Cycle_Tea_Wait_Time = 0;
+      }
+      else {
+        Cleaning_Cycle_Tea_Wait_Time ++;
+      }
+    }
+    break;
+  case TEA_FULL_CYCLE_OVER_ALL_WATER_DESPENSING_WATER_TO_ST_CHAMBER :
+    if(Cleaning_Cycle_Tea_Wait_Time >= MAX_TIME_TAKEN_TO_DESPENSING_THE_TEA_FROM_FLOAT_LEVEL_LOW_TO_EMPTY){
+      digitalWrite(ST_TEA_INLET_SV,STS_OFF);
+      digitalWrite(ST_CLEANING_SV,STS_ON);
+      Serial.println(F("FULL_CYCLE_CLEAN : TURNING OFF ST_INLET AND TURNING ON ST_CLEANING_SV"));
+      full_cycle = TEA_FULL_CYCLE_WATER_DESPENSING_OUT;
+      Debug_stng = "FULL_CYCLE_CLEAN : CURRENT STATE -> TEA_FULL_CYCLE_OVER_ALL_WATER_DESPENSING_WATER_TO_ST_CHAMBER TO NEXT STATE -> TEA_FULL_CYCLE_WATER_DESPENSING_OUT";
+      Serial.println(Debug_stng);
+      Debug_stng = "";
+      Cleaning_Cycle_Tea_Wait_Time = 0;
+    }
+    else {
+      Cleaning_Cycle_Tea_Wait_Time ++;
+    }
+    break;
+  case TEA_FULL_CYCLE_WATER_DESPENSING_OUT :
+    if(pinNumber[4] == STORAGE_CHAMBER_FLOAT_LOW && float_level[4] == HIGH){
+      full_cycle = TEA_FULL_CYCLE_OVER_ALL_WATER_DESPENSING_WATER_FROM_ST_CHAMBER;
+      Serial.println(F("FULL_CYCLE_CLEAN : CURRENT STATE -> TEA_FULL_CYCLE_WATER_DESPENSING_OUT TO NEXT STATE -> TEA_FULL_CYCLE_OVER_ALL_WATER_DESPENSING_WATER_FROM_ST_CHAMBER"));
+      Debug_stng = "";
+      Cleaning_Cycle_Tea_Wait_Time = 0;
+    }
+    else {
+      if(Cleaning_Cycle_Tea_Wait_Time >= MAX_WAIT_TIME_TO_DESPENSE_TEA_FROM_FLOAT_HIGH_LEVEL_TO_LOW){
+        digitalWrite(ST_CLEANING_SV,STS_OFF);
+        Serial.println(F("FULL_CYCLE_CLEAN : TURNING OFF THE ST_CLEANING_SV"));
+        full_cycle  = TEA_FULL_CYCLE_PROCESS_FAILED;
+        Debug_stng = "FULL_CYCLE_CLEAN : CURRENT STATE -> TEA_FULL_CYCLE_WATER_DESPENSING_OUT TO NEXT STATE -> TEA_FULL_CYCLE_PROCESS_FAILED";
+        Serial.println(Debug_stng);
+        Cleaning_Cycle_Tea_Wait_Time = 0;
+      }
+      else {
+        Cleaning_Cycle_Tea_Wait_Time ++;
+      }
+    break;
+  case TEA_FULL_CYCLE_OVER_ALL_WATER_DESPENSING_WATER_FROM_ST_CHAMBER :
+    if(Cleaning_Cycle_Tea_Wait_Time >= MAX_TIME_TAKEN_TO_DESPENSING_THE_TEA_FROM_FLOAT_LEVEL_LOW_TO_EMPTY){
+        digitalWrite(ST_CLEANING_SV,STS_OFF);
+        Serial.println(F("FULL_CYCLE_CLEAN : TURNING OFF THE ST_CLEANING_SV"));
+        Full_cycle_clean_request = false;
+        //Day_end_Cleaning_cycle = false;
+        //Reset_end_Cleaning_cycle = false;
+        full_cycle_counter_function();
+        Alarm_intialised_after_the_reset_process_completed();
+        full_cycle = TEA_FULL_CYCLE_PROCESS_START;
+        Serial.println("FULL_CYCLE_CLEAN : CURRENT STATE -> TEA_FULL_CYCLE_OVER_ALL_WATER_DESPENSING_WATER_FROM_ST_CHAMBER TO NEXT STATE -> TEA_FULL_CYCLE_PROCESS_START");
+      }
+      else {
+        Cleaning_Cycle_Tea_Wait_Time ++;
+      }
+      break;
+  
+  case TEA_FULL_CYCLE_PROCESS_FAILED :
+    if(Cleaning_Cycle_Tea_Wait_Time >= 2000){
+      Cleaning_Cycle_Tea_Wait_Time = 0;
+    }
+    else {
+      Cleaning_Cycle_Tea_Wait_Time ++;
+    }
+    break;
+
+  }
+  }
+}*/
+
+void setup(){
+  Serial.begin(115200);
+  Serial3.begin(11200);
+  pinMode(WATER_BUBBLE_1_FLOAT_LEVEL_LOW,INPUT);
+  pinMode(WATER_BUBBLE_2_FLOAT_LEVEL_LOW,INPUT);
+  pinMode(PREP_CHAMBER_FLOAT_LOW,INPUT);
+  pinMode(PREP_CHAMBER_FLOAT_HIGH,INPUT);
+  pinMode(STORAGE_CHAMBER_FLOAT_LOW,INPUT);
+  pinMode(WASTAGE_OVERFLOW_FLOAT_HIGH,INPUT);
+  pinMode(FLOW_SENSOR_READING,INPUT);
+  pinMode(LEAD_SCREW_FEEDBACK_PUSHBUTTON,INPUT);
+  pinMode(FEEDBACK_OF_MACHINE_LOCK,INPUT);
+  pinMode(ADDITINAL_INPUT_1,INPUT);
+  pinMode(ADDITINAL_INPUT_2,INPUT);
+
+  pinMode(WATER_PUMP_1,OUTPUT);
+  pinMode(WATER_PUMP2,OUTPUT);
+  pinMode(FUNNEL_DIVERGENT_SV,OUTPUT);
+  pinMode(PT_TANK_SV,OUTPUT);
+  pinMode(CAN_1,OUTPUT);
+  pinMode(CAN_2,OUTPUT);
+  pinMode(CAN_3,OUTPUT);
+  pinMode(FLV_CAN,OUTPUT);
+  pinMode(PT_HEATER,OUTPUT);
+  pinMode(ST_HEATER,OUTPUT);
+  pinMode(ST_TEA_INLET_SV,OUTPUT);
+  pinMode(TEA_DESPENSING_PUMP,OUTPUT);
+  pinMode(ST_CLEANING_SV,OUTPUT);
+  pinMode(EXHAUST_FAN,OUTPUT);
+  pinMode(REMOVE_WASTE_WATER_DIV_SV,OUTPUT);
+  pinMode(ADDITIONAL_OUTPUTS_1,OUTPUT);
+  pinMode(ADDITIONAL_OUTPUTS_2,OUTPUT);
+  pinMode(ADDITIONAL_OUTPUTS_3,OUTPUT);
+  pinMode(ADDITIONAL_OUTPUTS_4,OUTPUT);
+  pinMode(ADDITIONAL_OUTPUTS_5,OUTPUT);
+  pinMode(ADDITIONAL_OUTPUTS_6,OUTPUT);
+  pinMode(ADDITIONAL_OUTPUTS_7,OUTPUT);
+  pinMode(ADDITIONAL_OUTPUTS_8,OUTPUT);
+  pinMode(ADDITIONAL_OUTPUTS_9,OUTPUT);
+
+  digitalWrite(WATER_PUMP_1,STS_OFF);
+  digitalWrite(WATER_PUMP2,STS_OFF);
+  digitalWrite(FUNNEL_DIVERGENT_SV,STS_OFF);
+  digitalWrite(PT_TANK_SV,STS_OFF);
+  digitalWrite(CAN_1,STS_OFF);
+  digitalWrite(CAN_2,STS_OFF);
+  digitalWrite(CAN_3,STS_OFF);
+  digitalWrite(FLV_CAN,STS_OFF);
+  digitalWrite(PT_HEATER,STS_OFF);
+  digitalWrite(ST_HEATER,STS_OFF);
+  digitalWrite(ST_TEA_INLET_SV,STS_OFF);
+  digitalWrite(TEA_DESPENSING_PUMP,STS_OFF);
+  digitalWrite(ST_CLEANING_SV,STS_OFF);
+  digitalWrite(EXHAUST_FAN,STS_OFF);
+  digitalWrite(REMOVE_WASTE_WATER_DIV_SV,STS_OFF);
+  digitalWrite(ADDITIONAL_OUTPUTS_1,STS_OFF);
+  digitalWrite(ADDITIONAL_OUTPUTS_2,STS_OFF);
+  digitalWrite(ADDITIONAL_OUTPUTS_3,STS_OFF);
+  digitalWrite(ADDITIONAL_OUTPUTS_4,STS_OFF);
+  digitalWrite(ADDITIONAL_OUTPUTS_5,STS_OFF);
+  digitalWrite(ADDITIONAL_OUTPUTS_6,STS_OFF);
+  digitalWrite(ADDITIONAL_OUTPUTS_7,STS_OFF);
+  digitalWrite(ADDITIONAL_OUTPUTS_8,STS_OFF);
+  digitalWrite(ADDITIONAL_OUTPUTS_9,STS_OFF);
+
+
+  
+}
+
+void loop(){
+  delay(1);
+  read_float_level_switches();
+  Lead_screw_Controlling_for_Tea_Preparation_Process();
+  Tea_preparation_process();
+
+  static int wait_time = 0;
+  if(wait_time >= 5000){
+    Read_OneWire_Temp();
+    wait_time = 0;
+  }
+  else {
+    wait_time ++;
+  }
+
+}
+
+void serialEvent(){
+  while(Serial.available()){
+    char inchar = Serial.read();
+    if(inchar == '\n'){
+      stringComplete = true;
+      vserialdataprocessing();
+    }
+    else {
+      inputString += inchar;
+    }
+  }
+}
+
+void vserialdataprocessing(){
+  if(stringComplete){
+    Serial.println(inputString);
+    if(inputString == "tea"){
+      Serial.print("tea_process_state :");
+      Serial.println(tea_process_state);
+      Serial.print("tea preparation time : ");
+      Serial.println(Tea_preparation_Wait_Time);
+    }
+    inputString = "";
+    stringComplete = false;
+  }
+}
+
